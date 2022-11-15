@@ -734,40 +734,45 @@ func (f *finder) find(slice interface{}, itemFunc func(i int) string, opts []Opt
 	}()
 
 	for {
-		f.draw(10 * time.Millisecond)
-
-		err := f.readKey()
-		// hack for earning time to filter exec
-		if isInTesting() {
-			time.Sleep(50 * time.Millisecond)
-		}
-		switch {
-		case errors.Is(err, ErrAbort):
+		select {
+		case <-ctx.Done():
 			return nil, ErrAbort
-		case errors.Is(err, errEntered):
-			f.stateMu.RLock()
-			defer f.stateMu.RUnlock()
+		default:
+			f.draw(10 * time.Millisecond)
 
-			if len(f.state.matched) == 0 {
+			err := f.readKey()
+			// hack for earning time to filter exec
+			if isInTesting() {
+				time.Sleep(50 * time.Millisecond)
+			}
+			switch {
+			case errors.Is(err, ErrAbort):
 				return nil, ErrAbort
-			}
-			if f.opt.multi {
-				if len(f.state.selection) == 0 {
-					return []int{f.state.matched[f.state.y].Idx}, nil
+			case errors.Is(err, errEntered):
+				f.stateMu.RLock()
+				defer f.stateMu.RUnlock()
+
+				if len(f.state.matched) == 0 {
+					return nil, ErrAbort
 				}
-				poss, idxs := make([]int, 0, len(f.state.selection)), make([]int, 0, len(f.state.selection))
-				for idx, pos := range f.state.selection {
-					idxs = append(idxs, idx)
-					poss = append(poss, pos)
+				if f.opt.multi {
+					if len(f.state.selection) == 0 {
+						return []int{f.state.matched[f.state.y].Idx}, nil
+					}
+					poss, idxs := make([]int, 0, len(f.state.selection)), make([]int, 0, len(f.state.selection))
+					for idx, pos := range f.state.selection {
+						idxs = append(idxs, idx)
+						poss = append(poss, pos)
+					}
+					sort.Slice(idxs, func(i, j int) bool {
+						return poss[i] < poss[j]
+					})
+					return idxs, nil
 				}
-				sort.Slice(idxs, func(i, j int) bool {
-					return poss[i] < poss[j]
-				})
-				return idxs, nil
+				return []int{f.state.matched[f.state.y].Idx}, nil
+			case err != nil:
+				return nil, errors.Wrap(err, "failed to read a key")
 			}
-			return []int{f.state.matched[f.state.y].Idx}, nil
-		case err != nil:
-			return nil, errors.Wrap(err, "failed to read a key")
 		}
 	}
 }
