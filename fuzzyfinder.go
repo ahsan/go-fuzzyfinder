@@ -670,7 +670,14 @@ func (f *finder) find(slice interface{}, itemFunc func(i int) string, opts []Opt
 		matched []matching.Matched
 	)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	var parentContext context.Context
+	if opt.context != nil {
+		parentContext = opt.context
+	} else {
+		parentContext = context.Background()
+	}
+
+	ctx, cancel := context.WithCancel(parentContext)
 	defer cancel()
 
 	inited := make(chan struct{})
