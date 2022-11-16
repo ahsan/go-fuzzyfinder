@@ -473,7 +473,7 @@ func (f *finder) readKey(ctx context.Context) error {
 	case ee := <-f.termEventsChan:
 		e = ee
 	case <-ctx.Done():
-		return ErrAbort
+		return ErrCancel
 	}
 
 	f.stateMu.Lock()
