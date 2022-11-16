@@ -77,6 +77,9 @@ type finder struct {
 	drawTimer *time.Timer
 	eventCh   chan struct{}
 	opt       *opt
+
+	termEventsChan <-chan tcell.Event
+	termQuitChan   chan<- struct{}
 }
 
 func newFinder() *finder {
@@ -95,6 +98,12 @@ func (f *finder) initFinder(items []string, matched []matching.Matched, opt opt)
 		if err := f.term.Init(); err != nil {
 			return errors.Wrap(err, "failed to initialize screen")
 		}
+
+		eventsChan := make(chan tcell.Event)
+		quitChan := make(chan struct{})
+		go f.term.ChannelEvents(eventsChan, quitChan)
+		f.termEventsChan = eventsChan
+		f.termQuitChan = quitChan
 	}
 
 	f.opt = &opt
@@ -458,14 +467,10 @@ func (f *finder) readKey(ctx context.Context) error {
 		}
 	}()
 
-	//e := f.term.PollEvent()
 	var e tcell.Event
-	eventsChan := make(chan tcell.Event)
-	quitChan := make(<-chan struct{})
-	f.term.ChannelEvents(eventsChan, quitChan)
 
 	select {
-	case ee := <-eventsChan:
+	case ee := <-f.termEventsChan:
 		e = ee
 	case <-ctx.Done():
 		return ErrAbort
