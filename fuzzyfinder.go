@@ -25,6 +25,7 @@ import (
 var (
 	// ErrAbort is returned from Find* functions if there are no selections.
 	ErrAbort   = errors.New("abort")
+	ErrCancel  = errors.New("cancel")
 	errEntered = errors.New("entered")
 )
 
@@ -444,7 +445,7 @@ func (f *finder) draw(d time.Duration) {
 // readKey reads a key input.
 // It returns ErrAbort if esc, CTRL-C or CTRL-D keys are inputted.
 // Also, it returns errEntered if enter key is inputted.
-func (f *finder) readKey() error {
+func (f *finder) readKey(ctx context.Context) error {
 	f.stateMu.RLock()
 	prevInputLen := len(f.state.input)
 	f.stateMu.RUnlock()
@@ -457,7 +458,19 @@ func (f *finder) readKey() error {
 		}
 	}()
 
-	e := f.term.PollEvent()
+	//e := f.term.PollEvent()
+	var e tcell.Event
+	eventsChan := make(chan tcell.Event)
+	quitChan := make(<-chan struct{})
+	f.term.ChannelEvents(eventsChan, quitChan)
+
+	select {
+	case ee := <-eventsChan:
+		e = ee
+	case <-ctx.Done():
+		return ErrAbort
+	}
+
 	f.stateMu.Lock()
 	defer f.stateMu.Unlock()
 
@@ -736,11 +749,11 @@ func (f *finder) find(slice interface{}, itemFunc func(i int) string, opts []Opt
 	for {
 		select {
 		case <-ctx.Done():
-			return nil, ErrAbort
+			return nil, ErrCancel
 		default:
 			f.draw(10 * time.Millisecond)
 
-			err := f.readKey()
+			err := f.readKey(ctx)
 			// hack for earning time to filter exec
 			if isInTesting() {
 				time.Sleep(50 * time.Millisecond)
